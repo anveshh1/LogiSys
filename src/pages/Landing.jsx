@@ -118,9 +118,6 @@ const Landing = () => {
               PLACE ORDER →
             </button>
           </Link>
-          <button className="btn btn-ghost" style={{ padding: '14px 28px', fontSize: '13px' }}>
-            VIEW DEMO
-          </button>
         </div>
 
       </section>
