@@ -37,7 +37,7 @@ LogiSys enables multi-role inventory management with a **manual FIFO allocation 
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/logisys.git
+git clone https://github.com/anveshh1/logiSys.git
 cd logisys
 
 # 2. Install dependencies
