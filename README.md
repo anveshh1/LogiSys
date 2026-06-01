@@ -381,14 +381,4 @@ The compiled assets are output to the `/dist` directory. Deploy to any static ho
 - **Mobile-first sidebar**: Drawer-based navigation for small screens
 - **Real-time updates**: Supabase Realtime subscriptions for live order/stock changes
 
----
-
-## 👥 Contributors
-
-This project is maintained by a dedicated team of developers. Contributions, issues, and feature requests are always welcome!
-
-- **Your Name** - *Lead Developer* - [@your-username](https://github.com/your-username)
-
----
-
 
