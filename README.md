@@ -379,6 +379,8 @@ The compiled assets are output to the `/dist` directory. Deploy to any static ho
 - **Notification system**: Supabase Database Webhooks for email/SMS on allocation completion
 - **Dynamic time slots**: Admin interface to create/modify delivery windows
 - **Mobile-first sidebar**: Drawer-based navigation for small screens
-- **Real-time updates**: Supabase Realtime subscriptions for live order/stock changes
+- **Real-time updates**: Supabase Realtime subscriptions for live order/stock change
 
 
+ 
+ 
