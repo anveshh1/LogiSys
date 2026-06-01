@@ -25,11 +25,9 @@ LogiSys enables multi-role inventory management with a **manual FIFO allocation 
 - [User Roles](#-user-roles)
 - [Security](#-security)
 - [Deployment](#-deployment)
-- [Screenshots](#-screenshots)
 - [Troubleshooting](#-troubleshooting)
 - [Future Improvements](#-future-improvements)
 - [Contributors](#-contributors)
-- [License](#-license)
 
 ---
 
@@ -340,21 +338,6 @@ npm run build
 ```
 
 The compiled assets are output to the `/dist` directory. Deploy to any static hosting provider (Vercel, Netlify, Cloudflare Pages). Configure the host to redirect all 404 traffic to `index.html` for client-side routing support.
-
----
-
-## 📸 Screenshots
-
-- **Landing Page** — Marketing splash with feature highlights
-- **Login / Signup** — Authentication forms with role toggle
-- **Product Catalog** — Searchable product grid with detail panels
-- **Create Order** — Category-filtered order form with stock display
-- **Order History** — Status table with allocation quantities
-- **Admin Control** — Product cards with RUN ALLOCATION buttons
-- **Admin Orders** — Filterable order management table
-- **Time Slot Monitor** — Capacity utilization cards and progress bars
-- **Business Listings** — CRUD interface for vendor products
-- **Dashboard** — Recharts capacity charts and order metrics
 
 ---
 
