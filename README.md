@@ -2,431 +2,219 @@
 
 A state-of-the-art, high-performance **Logistics and Priority-Based Order Distribution System** built with **React**, **Vite**, **Tailwind CSS**, and **Supabase (PostgreSQL)**. 
 
-LogiSys provides a robust dashboard, real-time inventory tracking, multi-role authorization (Admins, Businesses, and Customers), and a fully automated, transactional FIFO (First-In, First-Out) time-slot allocation engine.
+LogiSys provides a robust dashboard, real-time inventory tracking, multi-role authorization (Admins, Businesses, and Customers), and a fully automated, transactional FIFO (First-In, First-Out) time-slot allocation engine running directly on the database level.
 
 ---
 
-## 🎨 Visual Identity & Design System
+## 🚀 Project Overview
 
-LogiSys is designed with a premium, high-contrast, modern developer-centric aesthetic:
-- **Canvas Background**: Deep dark theme (`#0d0d0d`) featuring a responsive `.dot-grid` mesh.
-- **Card Surfaces**: Clean, sophisticated warm cream-colored panels (`#f5f2ee`, `#edeae5`) with high contrast borders (`#d8d4ce`) and subtle drop-shadows.
-- **Accent Theme**: High-energy neon red (`#ff3c3c`) for critical operations, highlights, active nav-indicators, and warnings.
-- **Typography**: Dual-font layout using `'DM Mono'` for strict technical details (numeric metrics, IDs, forms) and `'Inter'` for legible, clean body content.
-- **Animations**: Silky smooth transitions (`0.2s cubic-bezier(0.4, 0, 0.2, 1)`) for toggles, list items, and load-states.
+LogiSys solves the complex problem of fair, priority-based inventory allocation and delivery scheduling. By pushing complex business logic down to the PostgreSQL database layer (using triggers and row-level locks), the system guarantees transactional safety, prevents overselling race conditions, and ensures strict First-In, First-Out (FIFO) processing.
+
+### Core Features
+
+*   **Authentication & RBAC:** Secure email/password login with strict Role-Based Access Control dividing users into **Customers**, **Businesses**, and **Admins**.
+*   **Product Management:** Businesses can list custom inventory. Admins have global oversight.
+*   **FIFO Queue System:** Orders are automatically ranked on insertion to guarantee strict processing priority.
+*   **Automated Allocation System:** Orders are atomically matched to the earliest available delivery `time_slots` window based on capacity.
+*   **Inventory Tracking:** Stock is automatically deducted upon order creation and safely restored if an order is cancelled.
+*   **Analytics Dashboards:** Real-time data visualization using Recharts for admins and businesses.
 
 ---
 
-## 🏗️ System Architecture & Role Authorization
+## 🏗️ Architecture Overview
 
-LogiSys implements strict role-based access control (RBAC) queried directly from database profiles:
+LogiSys relies heavily on a "Thick Database, Thin Client" architecture. The React frontend handles presentation, routing, and user input, while Supabase handles authentication, authorization (RLS), and business logic execution (Triggers/Functions).
+
+### User & Role Flow
 
 ```mermaid
 graph TD
     User([User Auth]) --> AuthContext{Auth Context}
-    AuthContext -->|Profile Role| Admin[Admin Role]
-    AuthContext -->|Profile Role| Business[Business Role]
-    AuthContext -->|Profile Role| Customer[Customer Role]
-
-    subgraph Admin Pages
-        Admin --> DashboardAdmin[Admin Dashboard]
-        Admin --> ProductOverview[Product Stock Overview]
-        Admin --> AllOrders[All Orders Panel]
-        Admin --> Listings[Inventory Listings]
-        Admin --> Slots[Time Slots Monitor]
-    end
-
-    subgraph Business Pages
-        Business --> DashboardBusiness[Dashboard Stats]
-        Business --> ProductCatalogBus[Product Catalog]
-        Business --> BusinessList[My Custom Listings]
-        Business --> CreateOrderBus[Create Orders]
-        Business --> OrdersBus[My Orders History]
-    end
-
-    subgraph Customer Pages
-        Customer --> ProductCatalogCust[Product Catalog]
-        Customer --> CreateOrderCust[Create Orders]
-        Customer --> OrdersCust[My Orders History]
-    end
+    AuthContext -->|Token JWT| Profiles[(Profiles Table)]
+    
+    Profiles -->|Role: Admin| AdminPages[Admin Dashboard, Slots Monitor, Inventory Oversight]
+    Profiles -->|Role: Business| BusinessPages[Business Dashboard, Catalog, Own Listings]
+    Profiles -->|Role: Customer| CustomerPages[Product Catalog, Create Order, Order History]
 ```
 
 ---
 
 ## 💾 Database Schema
 
-The PostgreSQL database on Supabase is fully relational and transactional:
+The PostgreSQL database on Supabase is fully relational and heavily utilizes triggers for atomic operations.
 
-### `profiles` (User metadata)
-- `id` (UUID, PK) -> Links to Supabase `auth.users.id`
-- `name` (Text)
-- `email` (Text)
-- `role` (Text: `customer` | `business` | `admin`)
-- `business_id` (Text, Nullable)
+### Tables & Columns
 
-### `products` (Active inventory)
-- `id` (UUID, PK)
-- `name` (Text)
-- `description` (Text)
-- `category` (Text)
-- `price` (Numeric)
-- `available_quantity` (Integer)
-- `created_by` (UUID -> `profiles.id`)
+*   **`profiles`**: Central user metadata.
+    *   `id` (UUID, PK) -> Links to `auth.users`
+    *   `email` (Text), `name` (Text)
+    *   `role` (Text: `customer` | `business` | `admin`)
+    *   `business_name` (Text), `business_id` (Text)
+*   **`products`**: Active inventory listings.
+    *   `id` (UUID, PK)
+    *   `name` (Text), `description` (Text), `category` (Text), `status` (Text)
+    *   `total_quantity` (Int), `available_quantity` (Int)
+    *   `created_by` (UUID -> `profiles.id`)
+*   **`orders`**: Customer and Business orders.
+    *   `id` (UUID, PK)
+    *   `user_id` (UUID -> `profiles.id`)
+    *   `product_id` (UUID -> `products.id`)
+    *   `quantity` (Int), `rank` (Int - FIFO Sequence)
+    *   `status` (Text: `pending` | `allocated` | `fulfilled` | `cancelled`)
+    *   `slot_id` (UUID -> `time_slots.id`)
+*   **`time_slots`**: Delivery capacity windows.
+    *   `id` (UUID, PK)
+    *   `slot_start` (Time), `slot_end` (Time)
+    *   `max_capacity` (Int), `current_capacity` (Int)
+*   **`allocations`**: Junction mapping for fulfilled capacity.
+    *   `id` (UUID, PK)
+    *   `order_id` (UUID -> `orders.id`)
+    *   `allocated_quantity` (Int), `allocated_at` (Timestamptz)
 
-### `orders` (Order tracking)
-- `id` (UUID, PK)
-- `user_id` (UUID -> `profiles.id`)
-- `product_id` (UUID -> `products.id`)
-- `quantity` (Integer)
-- `rank` (Integer, Serial FIFO Sequence)
-- `status` (Text: `pending` | `allocated` | `cancelled`)
-- `slot_id` (UUID -> `time_slots.id`, Nullable)
-- `created_at` (Timestamptz)
+### Database Triggers & Functions
 
-### `time_slots` (Delivery capacity windows)
-- `id` (UUID, PK)
-- `slot_start` (Timestamptz)
-- `slot_end` (Timestamptz)
-- `current_capacity` (Integer)
-- `max_capacity` (Integer)
+To prevent frontend race conditions, LogiSys executes core logic atomically via PostgreSQL triggers on the `orders` table:
 
-### `order_allocations` (Allocation junction table)
-- `order_id` (UUID -> `orders.id`, PK)
-- `slot_id` (UUID -> `time_slots.id`, PK)
+1.  **`trg_process_order` (BEFORE INSERT)**: Locks the product row (`FOR UPDATE`), verifies sufficient `available_quantity`, deducts the stock, and scans `time_slots` to assign the earliest window with available capacity. Updates the slot's `current_capacity` and assigns the `slot_id` to the order.
+2.  **`trg_assign_rank` (BEFORE INSERT)**: Calculates and assigns the `rank` dynamically based on existing orders for the product to enforce strict FIFO.
+3.  **`trg_create_allocation` (AFTER INSERT)**: Automatically inserts a record into the `allocations` table mapping the `order_id` to the quantity fulfilled.
+4.  **`trg_order_cancelled` (BEFORE UPDATE)**: If an order's status changes to `cancelled`, this trigger safely restores the `available_quantity` on the product and frees up the `current_capacity` on the assigned `time_slots`.
 
 ---
 
-## ⚡ High-Performance PostgreSQL Triggers (`sql/fix_all_triggers.sql`)
+## 🔒 Security
 
-LogiSys executes all core business logic at the database level to ensure atomic consistency, eliminate frontend race conditions, and keep API payloads minimal.
+*   **Authentication**: Managed by Supabase Auth (JWTs).
+*   **Authorization**: Handled client-side via React Router boundaries (`ProtectedLayout.jsx`) and server-side via PostgreSQL Row Level Security (RLS).
+*   **Row Level Security (RLS)**:
+    *   **Profiles**: Safely references `auth.jwt() -> 'user_metadata' ->> 'role'` to prevent infinite recursion during admin checks. Users can read/update their own profiles.
+    *   **Orders**: Customers can only SELECT and INSERT their own orders. Admins can view all orders.
+    *   **Products**: Publicly readable. Businesses can only mutate products where `auth.uid() = created_by`.
 
-### 1. Auto-Decrement Stock
-- **Trigger**: `trg_decrement_stock` (`AFTER INSERT ON orders`)
-- **Logic**: Automatically decrements `available_quantity` in the `products` table for the matching product. If stock is insufficient, it throws an exception (`Insufficient stock`) and rolls back the order transaction.
+---
 
-### 2. Auto-Increment FIFO Queue Rank
-- **Sequence**: `orders_rank_seq`
-- **Logic**: Modifies `orders.rank` to pull defaults from an isolated PostgreSQL sequence. Frontends do not need to query maximum values before inserting, ensuring concurrent users never collision-rank.
+## 💻 Tech Stack
 
-### 3. FIFO Time-Slot Allocation Engine
-- **Trigger**: `trg_allocate_order` (`AFTER INSERT ON orders`)
-- **Logic**: Queries the earliest available `time_slots` window (ordered by `slot_start` asc) that still has capacity (`current_capacity < max_capacity`). It locks the row via `FOR UPDATE` to prevent concurrent collisions, creates an `order_allocations` link, increments the slot's capacity, and updates the order status to `'allocated'`.
-
-### 4. Cancellation Cleanup & Stock Restore
-- **Trigger**: `trg_restore_on_cancel` (`AFTER UPDATE ON orders`)
-- **Logic**: When an order status updates to `'cancelled'`, this trigger automatically restores the product `available_quantity`, decrements the allocated `time_slots.current_capacity`, and purges the relationship from `order_allocations`.
+*   **Frontend Library**: React 18
+*   **Build Tool**: Vite
+*   **Routing**: React Router v6
+*   **Styling**: Tailwind CSS & PostCSS
+*   **Data Visualization**: Recharts
+*   **Backend & Database**: Supabase (PostgreSQL, Auth, PostgREST)
 
 ---
 
 ## 📁 Project Structure
 
 ```bash
-├── sql/
-│   └── fix_all_triggers.sql    # Core PostgreSQL database schema fixes & triggers
+├── .env                    # Supabase environment variables
+├── index.html              # App entry HTML
+├── package.json            # Dependencies and scripts
 ├── src/
-│   ├── components/
-│   │   ├── EmptyState.jsx      # Empty state display component
-│   │   ├── LoadingSkeleton.jsx # Skeleton loaders with shimmer animations
-│   │   ├── PageHeader.jsx      # Uniform header for navigation views
-│   │   ├── Sidebar.jsx         # Dynamic role-based collapsing navigation bar
-│   │   └── StatCard.jsx        # Premium KPI stat presentation cards
-│   ├── context/
-│   │   └── AuthContext.jsx     # Supabase Session, Sign In/Out/Up logic
-│   ├── data/
-│   │   └── mockData.js         # Optional fallback dashboard mock datasets
-│   ├── lib/
-│   │   └── supabaseClient.js   # Supabase client instantiation
-│   ├── pages/
-│   │   ├── AdminDashboard.jsx  # Control Panel overview for Admins
-│   │   ├── AdminOrders.jsx     # Master order monitor and cancellation control
-│   │   ├── AdminProductOverview.jsx # Chart analytics for products
-│   │   ├── AdminProducts.jsx   # Admin listing creator and inventory adjuster
-│   │   ├── AllocationMonitor.jsx # Deep stats on time windows
-│   │   ├── BusinessListings.jsx# Business custom items listing control
-│   │   ├── CreateOrder.jsx     # Customer & Business checkout form
-│   │   ├── Dashboard.jsx       # Recharts capacity overview and metrics
-│   │   ├── Landing.jsx         # Premium marketing splash page
-│   │   ├── Login.jsx           # Secure user sign in view
-│   │   ├── Orders.jsx          # Order tracking & customer FIFO queue position panel
-│   │   ├── Products.jsx        # Shopper listing grid with search and details
-│   │   ├── Profile.jsx         # Profile metadata display and account settings
-│   │   ├── Signup.jsx          # Custom Customer vs Business registration view
-│   │   └── TimeSlotMonitor.jsx # Admin capacity tracking dashboard
-│   ├── services/
-│   │   └── orderService.js     # API service requests for queries
-│   ├── App.jsx                 # Routing and Protected Routes wrapper
-│   ├── ProtectedLayout.jsx     # RBAC layout boundary
-│   └── main.jsx                # Application root entry point
-├── package.json
-├── tailwind.config.js
-└── vite.config.js
+│   ├── App.jsx             # Root router configuration
+│   ├── ProtectedLayout.jsx # Role-based boundary & navigation shell
+│   ├── main.jsx            # React DOM root
+│   ├── index.css           # Global Tailwind & Theme variables
+│   ├── components/         # Reusable UI (Sidebar, StatCards, Spinners)
+│   ├── context/            # AuthContext for session management
+│   ├── lib/                # Supabase client initialization
+│   ├── pages/              # Application Views
+│   │   ├── Landing.jsx & Login.jsx & Signup.jsx
+│   │   ├── Dashboard.jsx & Profile.jsx
+│   │   ├── Products.jsx & Orders.jsx & CreateOrder.jsx
+│   │   ├── BusinessListings.jsx
+│   │   └── AdminDashboard.jsx, AdminOrders.jsx, AdminProducts.jsx, TimeSlotMonitor.jsx
+│   └── services/           # External API utilities
+└── tailwind.config.js      # Utility class definitions
 ```
 
 ---
 
-## 🚀 Setup & Installation
+## ⚙️ Installation & Local Development
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (v18 or higher recommended)
-- A [Supabase](https://supabase.com/) account and active project
 
-### 1. Clone & Install Dependencies
+*   [Node.js](https://nodejs.org/) (v18 or higher)
+*   A [Supabase](https://supabase.com/) account and active project
+
+### 1. Clone & Install
+
 ```bash
+git clone https://github.com/your-username/logisys.git
+cd logisys
 npm install
 ```
 
-### 2. Set Up Environment Variables
-Create a `.env` file in the root directory:
+### 2. Environment Setup
+
+Create a `.env` file in the root directory and populate it with your Supabase keys:
+
 ```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_public_key
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_public_key
 ```
 
-### 3. Initialize Database Triggers
-1. Log in to your **Supabase Dashboard**.
-2. Navigate to the **SQL Editor**.
-3. Copy the contents of [`sql/fix_all_triggers.sql`](file:///c:/Users/anves/OneDrive/Documents/dbms_logysis/project/sql/fix_all_triggers.sql) and paste them into a new query window.
-4. Click **Run** to set up the sequences, inventory handlers, and FIFO auto-allocation triggers.
+### 3. Database Initialization
 
-### 4. Start Local Development Server
+Ensure your Supabase PostgreSQL instance has the required tables (`profiles`, `products`, `orders`, `time_slots`, `allocations`), RLS policies, and triggers deployed. 
+
+### 4. Start Development Server
+
 ```bash
 npm run dev
 ```
-Open `http://localhost:5173` in your browser.
+
+The application will be accessible at `http://localhost:5173`.
 
 ---
 
-# 🔍 LogiSys — Full Audit Report
+## 👥 User Roles & Workflows
 
-> Generated: 2026-05-30 | Auditor: Senior Full-Stack Review
+### Customer
+The default role. Customers can browse the active product catalog, place orders, and view their order history/FIFO queue ranking.
 
----
+### Business
+Vendor accounts. Businesses have access to the `BusinessListings` view where they can create, manage, and monitor the stock of their own specific products. They can also place personal orders.
 
-## Phase 1 — Audit Findings (Prioritised)
-
-### 🔴 CRITICAL
-
-| # | File | Issue | Fix Applied |
-|---|------|-------|-------------|
-| C1 | `src/services/CreateOrder.jsx` | **Rules of Hooks violation** — `useAuth()` called at module scope (not inside a component or hook). Calling `React.useContext` outside a component throws immediately. File also calls `alert()` and `console.log` at module level. | File cleared. Logic lives in `pages/CreateOrder.jsx`. |
-| C2 | `src/context/AuthContext.jsx` | `isDemoMode` was **not exported** from the context value, but `Login.jsx` destructures `{ isDemoMode }` from `useAuth()` — silently `undefined`, causing the demo banner never to render (or crashing dependent conditionals). | Added `isDemoMode` to context value. |
-| C3 | `src/context/AuthContext.jsx` | `supabase` can be `null` when env vars are missing, but **every call** (`supabase.auth.getSession()`, `supabase.from(...)`) had no null guard — would throw `TypeError: Cannot read properties of null`. | Added `if (!supabase)` guards throughout. |
-| C4 | `src/services/orderService.js` | `runAllocation` wrote to `supabase.from('allocations')` but the schema table is **`order_allocations`**. Silent Supabase error, allocation records never created. | Fixed to `order_allocations` with `upsert` for idempotency. |
-| C5 | `src/pages/Orders.jsx` | FK join hint `allocations!allocations_order_id_fkey` is **wrong table name** — query returns no allocation data, so `alloc` is always `0`. | Changed to `order_allocations` with fallback fetch. |
+### Admin
+System operators. Admins have access to global dashboards, can view and cancel any order across the system, monitor `time_slots` capacity utilization, and oversee all active product listings.
 
 ---
 
-### 🟠 HIGH
+## 📸 Screenshots
 
-| # | File | Issue | Fix Applied |
-|---|------|-------|-------------|
-| H1 | `src/pages/AdminDashboard.jsx` | Used `alert()` for allocation result/error feedback — blocks the UI thread, looks unprofessional, unblockable on some browsers. | Replaced with toast notification (bottom-right, auto-dismiss). |
-| H2 | `src/pages/AdminDashboard.jsx` | `runAllocation` result was ignored — no way to tell how many orders were allocated. | `runAllocation` now returns `{ allocated, remaining }`, shown in toast. |
-| H3 | `src/pages/AdminDashboard.jsx` | "RUN ALLOCATION" button was enabled even when `available_quantity === 0`. Pointless call, confusing UX. | Button disabled + tooltip when out of stock. |
-| H4 | `src/pages/AdminOrders.jsx` | `cancelled` orders used `badge-accent` (red), identical to `pending`. No visual distinction between two very different states. | `cancelled` now uses `badge-cancelled` (neutral grey). |
-| H5 | `src/pages/Profile.jsx` | Saving name only updated local `profile` state — the **Sidebar still showed the old name** because it reads from `AuthContext.profile`. | `updateProfileCache({ name })` added to `AuthContext`, called on save. |
-| H6 | `src/components/StatCard.jsx` | `String(value).padStart(2, '0')` on a **string value** (e.g. `topCategory = 'Electronics'`) produces garbled output like `"Electronics"` padded to 2 chars — no-op but semantically wrong; on values like `"1"` it produces `"01"` which is fine for numbers but wrong for strings. | Guard added: only pad when `typeof value === 'number'`. |
-| H7 | `src/pages/TimeSlotMonitor.jsx` | **Division by zero** — `current / max_capacity` when `max_capacity === 0` produces `Infinity` or `NaN`, breaking the progress bar width (`width: Infinity%`) and status logic. | Introduced `safePct()` helper that returns 0 when max is falsy. |
-| H8 | `src/services/orderService.js` | `runAllocation` used `break` on first order it couldn't fulfil — **skipped smaller orders** that could still be allocated. Pure FIFO is correct for fairness, but `break` means a large order blocks all subsequent ones even if a later smaller order fits. Changed to `continue` with a note. | Changed `break` → `continue` so remaining stock is offered to subsequent orders. |
+*(Placeholders for application screenshots)*
+
+*   **Login & Authentication**: `[Screenshot: Landing & Login Page]`
+*   **Admin Dashboard**: `[Screenshot: Global Metrics & Order Feed]`
+*   **Product Catalog**: `[Screenshot: Product Grid & Search]`
+*   **Time Slot Monitor**: `[Screenshot: Allocation Capacity Bars]`
 
 ---
 
-### 🟡 MEDIUM
+## 🚀 Deployment
 
-| # | File | Issue | Fix Applied |
-|---|------|-------|-------------|
-| M1 | `src/pages/BusinessListings.jsx` | No validation that `available_quantity ≤ total_quantity`. A business could set available=9999, total=1. | Validation added in `handleSave()`. |
-| M2 | `src/pages/Orders.jsx` | No error state shown to user when Supabase fetch fails — blank page with `console.error` only. | Error banner added; fallback fetch without allocations. |
-| M3 | `src/pages/Landing.jsx` | "PLACE ORDER →" CTA for logged-in users linked to `/app/dashboard`. Customers are immediately redirected to `/products` from dashboard — two navigations. | Link changed to `/app/products` directly. |
-| M4 | `src/pages/Signup.jsx` | `businessDescription` and `businessCategory` fields are collected in the form but **never passed** to `signUp()`. Only `businessName` is forwarded. The fields are just decorative. | *Not fixed in code* — these fields are currently UI-only. If the DB trigger supports them, pass them via `user_metadata`. Flagged for backend work. |
-| M5 | `src/index.css` | No mobile layout. On screens < 768px, the 240px sidebar + main flex row overflows horizontally with no scrolling recovery. | Added mobile breakpoints: vertical stacking, table overflow scroll, responsive grid helpers. |
-| M6 | `src/context/AuthContext.jsx` | Debug `console.log("PROFILE LOADED:", data)` left in production code. | Removed. |
-| M7 | `src/pages/AdminDashboard.jsx` | Orders were sorted only by `created_at`; ignored the `rank` column which is the FIFO sequence key. | Sort now prioritises `rank`, then `created_at` as fallback. |
-| M8 | `src/pages/AllocationMonitor.jsx` | File uses 100% mock data (`mockData.js`), not routed anywhere, references unloaded `Syne` font, and has no Supabase queries. **Dead code.** | Not deleted (preserves git history) but excluded from all imports. Can be removed or replaced with a real Supabase-backed page. |
+LogiSys is a standard React SPA and can be deployed to any static hosting provider (Vercel, Netlify, Cloudflare Pages, etc.).
+
+1. Build the production bundle:
+   ```bash
+   npm run build
+   ```
+2. The compiled assets will be output to the `/dist` directory. Ensure your hosting provider is configured to redirect all 404 traffic to `index.html` to support client-side routing.
 
 ---
 
-### 🟢 LOW
+## 🔧 Troubleshooting
 
-| # | File | Issue | Note |
-|---|------|-------|------|
-| L1 | `src/data/mockData.js` | Only consumed by dead `AllocationMonitor.jsx`. | Safe to delete once AllocationMonitor is addressed. |
-| L2 | `src/pages/ProtectedLayout.jsx` | `*` fallback redirects to `dashboard` — causes 2-hop redirect for customers (dashboard → products). Functionally fine. | Layout class hooks (`layout-root`, `main-content`) added for mobile CSS. |
-| L3 | `src/components/Sidebar.jsx` | Hover uses imperative `e.currentTarget.style.*` which can conflict with active NavLink style. Works in practice but fragile. | Low risk; not changed. |
-| L4 | `src/pages/CreateOrder.jsx` | After order success, stock is re-fetched from DB. If the DB trigger hasn't decremented `available_quantity` yet (async), the displayed stock may be stale for ~1 second. | Acceptable; refresh already implemented. |
-| L5 | All pages | No `useCallback`/`useMemo` on fetch functions — every render recreates them. Low impact given page-level components, but can cause `useEffect` dependency lint warnings. | Fixed in AdminDashboard; others are lower priority. |
+*   **UI stuck in endless loading state:** Ensure your `.env` variables are correctly set. If `VITE_SUPABASE_URL` is missing, the AuthContext cannot initialize.
+*   **"Infinite recursion" database error:** This occurs if the RLS policy on the `profiles` table attempts to query the `profiles` table to check admin status. Ensure the policy uses `auth.jwt() -> 'user_metadata'` instead.
+*   **Orders failing to place:** Check the `time_slots` table. If the table is empty or all slots are at `max_capacity`, the allocation trigger will fail.
+*   **Missing Styles:** Ensure you are running `npm run dev` and not just opening the HTML file, as Tailwind requires the Vite build step to compile CSS classes.
 
 ---
 
-## Phase 2 — Database Verification
+## 🔮 Future Improvements
 
-### Required SQL Fixes
-
-```sql
--- 1. Ensure order_allocations table exists with correct structure
--- (run only if table doesn't exist)
-CREATE TABLE IF NOT EXISTS order_allocations (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id    uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  allocated_quantity integer NOT NULL CHECK (allocated_quantity > 0),
-  created_at  timestamptz DEFAULT now(),
-  UNIQUE(order_id)  -- one allocation record per order
-);
-
--- Index for FK lookups
-CREATE INDEX IF NOT EXISTS idx_order_allocations_order_id ON order_allocations(order_id);
-
--- 2. Ensure orders.rank has a reliable default (sequence or trigger)
--- If rank is not auto-assigned, two concurrent inserts will get the same rank.
--- Option A: use a sequence
-CREATE SEQUENCE IF NOT EXISTS order_rank_seq;
-ALTER TABLE orders ALTER COLUMN rank SET DEFAULT nextval('order_rank_seq');
-
--- Option B (better — product-scoped FIFO rank via trigger):
--- See trigger below.
-
--- 3. Stock decrement trigger on order INSERT (prevents oversell)
-CREATE OR REPLACE FUNCTION decrement_stock()
-RETURNS TRIGGER AS $$
-BEGIN
-  UPDATE products
-  SET available_quantity = available_quantity - NEW.quantity
-  WHERE id = NEW.product_id AND available_quantity >= NEW.quantity;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Insufficient stock for product %', NEW.product_id;
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_decrement_stock ON orders;
-CREATE TRIGGER trg_decrement_stock
-  BEFORE INSERT ON orders
-  FOR EACH ROW
-  WHEN (NEW.status = 'pending')
-  EXECUTE FUNCTION decrement_stock();
-
--- 4. Stock restoration on order cancellation
-CREATE OR REPLACE FUNCTION restore_stock_on_cancel()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.status = 'cancelled' AND OLD.status != 'cancelled' THEN
-    UPDATE products
-    SET available_quantity = available_quantity + OLD.quantity
-    WHERE id = OLD.product_id;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_restore_stock ON orders;
-CREATE TRIGGER trg_restore_stock
-  AFTER UPDATE OF status ON orders
-  FOR EACH ROW
-  EXECUTE FUNCTION restore_stock_on_cancel();
-
--- 5. Per-product FIFO rank trigger (race-condition safe)
-CREATE OR REPLACE FUNCTION assign_order_rank()
-RETURNS TRIGGER AS $$
-DECLARE
-  next_rank integer;
-BEGIN
-  SELECT COALESCE(MAX(rank), 0) + 1
-  INTO next_rank
-  FROM orders
-  WHERE product_id = NEW.product_id;
-
-  NEW.rank := next_rank;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_assign_rank ON orders;
-CREATE TRIGGER trg_assign_rank
-  BEFORE INSERT ON orders
-  FOR EACH ROW
-  EXECUTE FUNCTION assign_order_rank();
-
--- 6. Recommended indexes
-CREATE INDEX IF NOT EXISTS idx_orders_product_status ON orders(product_id, status);
-CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
-CREATE INDEX IF NOT EXISTS idx_orders_rank ON orders(product_id, rank);
-CREATE INDEX IF NOT EXISTS idx_products_created_by ON products(created_by);
-```
-
-### RLS Recommendations
-
-```sql
--- Orders: users can only see/insert their own orders
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users see own orders" ON orders FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users insert own orders" ON orders FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Admin sees all orders" ON orders FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- Products: anyone can read; only businesses (created_by) can modify their own
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public product read" ON products FOR SELECT USING (true);
-CREATE POLICY "Business modifies own products" ON products FOR ALL USING (auth.uid() = created_by);
-CREATE POLICY "Admin modifies all products" ON products FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-```
-
----
-
-## Phase 3 — RBAC Assessment
-
-| Check | Status |
-|-------|--------|
-| Admin routes conditionally rendered | ✅ Secure — routes not in DOM for non-admins |
-| Business routes isolated | ✅ `isBusiness &&` conditional rendering |
-| Customer access to admin pages | ✅ Falls to `*` → redirect |
-| Supabase RLS on orders | ⚠️ Verify enabled — see SQL above |
-| Business can only edit own products | ✅ `.eq('created_by', user.id)` on all mutations |
-| Role derived from profiles table | ✅ Not from client-side metadata (except brief signup window) |
-| Session persistence | ✅ `persistSession: true` in supabaseClient |
-
----
-
-## Phase 5 — Performance Notes
-
-- `fetchOrders` in `AdminDashboard` had no `useCallback` — refactored to prevent unnecessary re-subscriptions.
-- `AdminDashboard` now uses a single `Promise.all` for parallel product + order fetch.
-- `runAllocation` client-side is O(n) sequential Supabase calls — for high volume, move to a PostgreSQL function called via `supabase.rpc('run_allocation', { product_id })`.
-
----
-
-## Phase 6 — Reliability Checklist
-
-| Workflow | Status |
-|----------|--------|
-| Order creation | ✅ Inserts with `user_id`, `product_id`, `quantity`, `status: 'pending'` |
-| Stock decrement | ⚠️ Frontend refetches after order — decrement should be in DB trigger (SQL provided) |
-| Stock restoration on cancel | ⚠️ Not implemented client-side — must be DB trigger (SQL provided) |
-| FIFO ranking | ⚠️ `rank` default not confirmed atomic — DB trigger provided above |
-| Slot allocation | ✅ TimeSlotMonitor reads `time_slots` correctly |
-| Cancellation flow | ⚠️ Admin can set status → `cancelled` but stock is not restored without DB trigger |
-| AllocationMonitor page | ❌ Uses mock data only, not routed |
-
----
-
-## Phase 7 — Production Readiness Score
-
-| Category | Score | Notes |
-|----------|-------|-------|
-| Code correctness | 72/100 | Hooks violation fixed, FK names fixed, null guards added |
-| RBAC / Security | 78/100 | Client-side guards solid; RLS policy state unverified |
-| Database design | 65/100 | Missing atomic stock triggers; allocation table name mismatch |
-| UI/UX polish | 84/100 | Consistent design system; toast added; cancelled badge fixed |
-| Error handling | 70/100 | Most pages log errors; now show user-facing messages too |
-| Performance | 75/100 | Parallel fetches; no heavy memoization needed at current scale |
-| Mobile responsiveness | 60/100 | Basic breakpoints added; sidebar collapse UX needs native mobile treatment |
-| Reliability | 68/100 | FIFO logic sound; stock decrement/restore needs DB-level enforcement |
-
-### **Overall: 72 / 100**
-
-**To reach 90+:** implement DB-level stock triggers (SQL above), enable RLS policies, move `runAllocation` to a Supabase Edge Function or DB RPC, and add a proper mobile sidebar drawer.
+*   **Stripe Integration**: Add payment capture prior to finalizing the order insertion.
+*   **Webhooks**: Implement Supabase Database Webhooks to trigger email/SMS notifications upon successful time slot allocation.
+*   **Dynamic Time Slots**: Create an admin interface to dynamically generate and alter future time slots beyond the daily defaults.

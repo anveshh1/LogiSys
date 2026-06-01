@@ -1,31 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
 
-// Place Order
-export async function placeOrder(userId, productId, quantity) {
-  if (!supabase) throw new Error('Supabase not configured')
-  const { data, error } = await supabase
-    .from('orders')
-    .insert([{ user_id: userId, product_id: productId, quantity, status: 'pending' }])
-    .select()
-
-  if (error) throw error
-  return data[0]
-}
-
-// Queue Position (FIFO — how many pending orders are ahead of this one)
-export async function getQueuePosition(order) {
-  if (!supabase) throw new Error('Supabase not configured')
-  const { count, error } = await supabase
-    .from('orders')
-    .select('*', { count: 'exact', head: true })
-    .eq('product_id', order.product_id)
-    .eq('status', 'pending')
-    .lt('created_at', order.created_at)
-
-  if (error) throw error
-  return (count ?? 0) + 1
-}
-
 // Admin allocation runner — FIFO over pending orders, bounded by available stock.
 // Records each allocation in `allocations` and decrements product stock.
 export async function runAllocation(productId) {
