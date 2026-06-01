@@ -1,15 +1,42 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
 const AuthContext = createContext({})
+
+// Whether Supabase is configured at all (env vars present)
+const isDemoMode = !supabase
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  const fetchProfile = useCallback(async (userId) => {
+    if (!supabase) { setLoading(false); return }
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+      if (error) throw error
+      setProfile(data)
+    } catch (err) {
+      console.error('Profile fetch failed:', err)
+      setProfile(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Expose so Profile page can sync name update without a full re-fetch
+  const updateProfileCache = useCallback((patch) => {
+    setProfile(prev => prev ? { ...prev, ...patch } : prev)
+  }, [])
+
   useEffect(() => {
-    // 🔥 Get session on load
+    if (!supabase) { setLoading(false); return }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user)
@@ -21,7 +48,6 @@ export function AuthProvider({ children }) {
       }
     })
 
-    // 🔥 Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (session?.user) {
@@ -36,63 +62,33 @@ export function AuthProvider({ children }) {
     )
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [fetchProfile])
 
-  // 🔥 Fetch profile (NO default fake role)
-  async function fetchProfile(userId) {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      if (error) throw error
-
-      console.log("PROFILE LOADED:", data) // debug
-
-      setProfile(data)
-    } catch (err) {
-      console.error("Profile fetch failed:", err)
-
-      // ⚠️ DO NOT silently assign admin/user randomly
-      setProfile(null)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // 🔐 Sign In
   async function signIn(email, password) {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    })
-
+    if (!supabase) return { error: new Error('Supabase not configured') }
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
     return { error }
   }
 
-  // 🔐 Sign Up — stores role + business info in user_metadata
-  // The database trigger reads these to create the profiles row
+  // Stores role + business info in user_metadata; DB trigger creates the profiles row
   async function signUp(email, password, name, accountType = 'customer', businessName = '') {
+    if (!supabase) return { error: new Error('Supabase not configured') }
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           name,
-          role: accountType,           // 'customer' or 'business'
-          business_name: businessName, // only relevant for business accounts
+          role: accountType,
+          business_name: businessName,
         }
       }
     })
-
     return { error }
   }
 
-  // 🔐 Sign Out
   async function signOut() {
-    await supabase.auth.signOut()
+    if (supabase) await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
   }
@@ -103,9 +99,11 @@ export function AuthProvider({ children }) {
         user,
         profile,
         loading,
+        isDemoMode,
         signIn,
         signUp,
-        signOut
+        signOut,
+        updateProfileCache,
       }}
     >
       {children}

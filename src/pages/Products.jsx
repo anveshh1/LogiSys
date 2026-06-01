@@ -25,7 +25,8 @@ export default function Products() {
     setLoading(false)
   }
 
-  const categories = ['All', 'Shoes', 'RAM', 'Tickets']
+  // ✅ Dynamic categories — automatically picks up any new category from the DB
+  const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))]
   const filtered = activeCategory === 'All'
     ? products
     : products.filter(p => p.category === activeCategory)

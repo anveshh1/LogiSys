@@ -51,6 +51,8 @@ export default function BusinessListings() {
   async function handleSave() {
     if (!form.name.trim()) { showToast('Product name is required', 'error'); return }
     if (form.total_quantity < 0) { showToast('Quantity cannot be negative', 'error'); return }
+    if (form.available_quantity < 0) { showToast('Available quantity cannot be negative', 'error'); return }
+    if (form.available_quantity > form.total_quantity) { showToast('Available cannot exceed total quantity', 'error'); return }
 
     setSaving(true)
 

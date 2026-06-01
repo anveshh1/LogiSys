@@ -107,7 +107,12 @@ export default function AdminOrders() {
                       <span className="badge badge-accent" style={{ fontSize: '10px' }}>#{order.rank || '—'}</span>
                     </td>
                     <td>
-                      <span className={`badge ${order.status === 'pending' ? 'badge-accent' : order.status === 'cancelled' ? 'badge-accent' : 'badge-neutral'}`}>
+                      <span className={`badge ${
+                        order.status === 'pending' ? 'badge-accent'
+                        : order.status === 'cancelled' ? 'badge-cancelled'
+                        : order.status === 'fulfilled' ? 'badge-success'
+                        : 'badge-neutral'
+                      }`}>
                         {order.status}
                       </span>
                     </td>

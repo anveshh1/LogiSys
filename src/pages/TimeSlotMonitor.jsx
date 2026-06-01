@@ -3,10 +3,15 @@ import { supabase } from '../lib/supabaseClient'
 import PageHeader from '../components/PageHeader'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 
+function safePct(slot) {
+  if (!slot.max_capacity || slot.max_capacity === 0) return 0
+  return Math.min(Math.round((slot.current_capacity / slot.max_capacity) * 100), 100)
+}
+
 function getStatus(slot) {
-  const pct = slot.current_capacity / slot.max_capacity
-  if (pct >= 1) return 'full'
-  if (pct >= 0.7) return 'critical'
+  const pct = safePct(slot)
+  if (pct >= 100) return 'full'
+  if (pct >= 70) return 'critical'
   return 'open'
 }
 
@@ -38,7 +43,7 @@ export default function TimeSlotMonitor() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
         {slots.map((slot, i) => {
           const status = getStatus(slot)
-          const pct = Math.round((slot.current_capacity / slot.max_capacity) * 100)
+          const pct = safePct(slot)
           const remaining = slot.max_capacity - slot.current_capacity
           const accentColor = status === 'full' ? '#ff3c3c' : status === 'critical' ? '#e08000' : '#111111'
           const borderColor = status === 'full' ? 'rgba(255,60,60,0.3)' : '#d8d4ce'
@@ -91,7 +96,7 @@ export default function TimeSlotMonitor() {
           <tbody>
             {slots.map(slot => {
               const status = getStatus(slot)
-              const pct = Math.round((slot.current_capacity / slot.max_capacity) * 100)
+              const pct = safePct(slot)
               const accentColor = status === 'full' ? '#ff3c3c' : status === 'critical' ? '#e08000' : '#111'
               return (
                 <tr key={slot.id}>

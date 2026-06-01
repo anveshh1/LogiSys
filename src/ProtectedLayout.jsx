@@ -69,10 +69,10 @@ export default function ProtectedLayout() {
   const isCustomer = !isAdmin && !isBusiness;
   const businessId = isBusiness ? (profile?.business_id || profile?.id?.slice(0, 8) || user.id?.slice(0, 8)) : null;
   const userName = profile?.name || user.user_metadata?.name || user.email?.split("@")[0];
-  const defaultPage = isAdmin ? "admin" : "products";
+  const defaultPage = isAdmin ? "admin" : isBusiness ? "dashboard" : "products";
 
   return (
-    <div style={{ display: "flex", background: "#0d0d0d", minHeight: "100vh" }}>
+    <div className="layout-root" style={{ display: "flex", background: "#0d0d0d", minHeight: "100vh" }}>
       <Sidebar
         isAdmin={isAdmin}
         isBusiness={isBusiness}
@@ -82,7 +82,7 @@ export default function ProtectedLayout() {
         userName={userName}
       />
 
-      <main style={{
+      <main className="main-content" style={{
         flex: 1,
         padding: "32px 36px",
         overflow: "auto",

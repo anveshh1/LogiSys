@@ -16,7 +16,7 @@ export default function Login() {
     setError('')
     const { error } = await signIn(email, password)
     if (error) { setError(error.message); setLoading(false) }
-    else navigate("/app/dashboard")
+    else navigate("/app") // role-based landing is resolved by ProtectedLayout's index route
   }
 
   function fillDemo(role) {

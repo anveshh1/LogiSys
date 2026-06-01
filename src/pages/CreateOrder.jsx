@@ -66,7 +66,7 @@ export default function CreateOrder() {
 
     setLoading(true)
 
-    // 🔥 GET NEXT RANK
+    // Assign next FIFO rank (no DB default exists for orders.rank)
     const { data: maxRank } = await supabase
       .from('orders')
       .select('rank')
@@ -87,7 +87,11 @@ export default function CreateOrder() {
 
     if (error) {
       console.error(error)
-      setMessage('Failed to place order')
+      // Surface DB trigger error (e.g. insufficient stock race condition)
+      const msg = error.message?.includes('Insufficient stock')
+        ? 'Stock was claimed by another order. Please refresh and try again.'
+        : 'Failed to place order. Please try again.'
+      setMessage(msg)
       setMessageType('error')
     } else {
       setMessage('Order placed successfully!')

@@ -40,7 +40,7 @@ export default function StatCard({ label, value, sub, accent }) {
         letterSpacing: '-0.02em',
         lineHeight: 1,
       }}>
-        {String(value).padStart(2, '0')}
+        {typeof value === 'number' ? String(value).padStart(2, '0') : value}
       </div>
 
       {sub && (

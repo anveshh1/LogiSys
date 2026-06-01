@@ -6,7 +6,7 @@ import LoadingSkeleton from '../components/LoadingSkeleton'
 import EmptyState from '../components/EmptyState'
 
 export default function Profile() {
-  const { user } = useAuth()
+  const { user, updateProfileCache } = useAuth()
   const [profile, setProfile] = useState(null)
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
@@ -61,7 +61,9 @@ export default function Profile() {
         .update({ name: editForm.name })
         .eq('id', user.id)
       if (error) throw error
-      setProfile({ ...profile, name: editForm.name })
+      const updated = { ...profile, name: editForm.name }
+      setProfile(updated)
+      updateProfileCache({ name: editForm.name }) // sync sidebar display name
       setEditing(false)
       showToast('success', 'Profile updated successfully')
     } catch {
